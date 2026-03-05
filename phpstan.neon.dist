@@ -1,0 +1,10 @@
+parameters:
+    level: 8
+    paths:
+        - app
+    inferPrivatePropertyTypeFromConstructor: true
+    treatPhpDocTypesAsCertain: false
+    tmpDir: build/phpstan
+    resultCachePath: build/phpstan/resultCache.php
+    parallel:
+        maximumNumberOfProcesses: 1

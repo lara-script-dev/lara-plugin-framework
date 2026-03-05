@@ -1,0 +1,40 @@
+{
+  "name": "cakealliance/lara-plugin-framework",
+  "type": "library",
+  "description": "Contracts that define how Lara script communicates with plugins.",
+  "keywords": ["exchanger-core", "plugins", "contracts"],
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Lara script",
+      "email": "support@lara-script.com"
+    }
+  ],
+  "require": {
+    "php": "^8.1 || ^8.2 || ^8.3 || ^8.4",
+    "illuminate/http": "^9.0 || ^10.0 || ^11.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "LaraPluginFramework\\": "app/"
+    },
+    "files": [
+      "app/Support/override_polyfill.php"
+    ]
+  },
+  "scripts": {
+    "phpstan": "phpstan analyse",
+    "psalm": "psalm"
+  },
+  "config": {
+    "optimize-autoloader": true,
+    "preferred-install": "dist",
+    "sort-packages": true
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true,
+  "require-dev": {
+    "phpstan/phpstan": "^2.1",
+    "vimeo/psalm": "^6.14"
+  }
+}
