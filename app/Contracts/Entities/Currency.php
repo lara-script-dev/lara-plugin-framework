@@ -9,4 +9,5 @@ interface Currency
     public function getId(): int;
     public function getName(?string $locale = null): string;
     public function getBaseCurrency(): string;
+    public function getShorthand(): string;
 }

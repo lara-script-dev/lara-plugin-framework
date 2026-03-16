@@ -25,4 +25,8 @@ interface Direction
     public function getMaxAmount(): ?Decimal;
 
     public function isUserVerificationRequired(): bool;
+
+    public function getFrom(): Currency;
+
+    public function getTo(): Currency;
 }
