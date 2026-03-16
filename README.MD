@@ -680,6 +680,155 @@ interface OrderAmountChangedEventInterface
 
 Merchants are payment processors that handle deposits and withdrawals. Create custom merchants to integrate with payment gateways.
 
+### Direction Creation DTO
+
+If you create directions programmatically using `LaraPluginFramework\Contracts\Direction\CreatorInterface`, your DTO implements `CreateDirectionDTOInterface`.
+
+The following inputs accept either a simple list or detailed items:
+
+- `getCities()`
+  - `list<int>` — city IDs only
+  - `list<array{id:int, coefficient:string, min_amount?:string, max_amount?:string}>`
+- `getAutoWithdrawIntegrations()`
+  - `list<string>` — provider codes
+  - `list<array{code:string, min_amount?:string, max_amount?:string}>`
+
+Decimal values must be strings with dot separator.
+
+To look up withdraw providers and read their global min/max capabilities, use the repository contract:
+
+```
+use LaraPluginFramework\Contracts\Withdraw\Repository\WithdrawProviderRepositoryInterface;
+
+/** @var WithdrawProviderRepositoryInterface $repo */
+
+// Get all providers
+$allProviders = iterator_to_array($repo->getAll());
+
+// Get providers by codes
+$providers = iterator_to_array($repo->getByCodes(['provider_a', 'provider_b']));
+
+// Single provider by code
+$single = $repo->findByCode('provider_a');
+
+```
+
+---
+
+## Currency Management
+
+### Creating a Currency
+
+Currencies are created via the contract `LaraPluginFramework\Contracts\Currency\CreatorInterface` using a DTO that implements `CreateCurrencyDTOInterface`.
+
+Minimal example using an anonymous DTO implementation:
+
+```
+use LaraPluginFramework\Contracts\Currency\CreatorInterface as CurrencyCreatorInterface;
+use LaraPluginFramework\Contracts\Currency\DTO\CreateCurrencyDTOInterface;
+
+/** @var CurrencyCreatorInterface $creator */
+$creator = app(CurrencyCreatorInterface::class);
+
+$usdQuoteId = 123; // ID of USD quote pair (resolve or null)
+
+$currency = $creator->create(new class($usdQuoteId) implements CreateCurrencyDTOInterface {
+    private ?int $usdQuoteId;
+    public function __construct(?int $usdQuoteId) { $this->usdQuoteId = $usdQuoteId; }
+
+    public function getShorthand(): string { return 'USDT'; }
+    public function getAmount(): ?string { return null; }
+    public function getMinAmountUsd(): ?string { return null; }
+    public function getFromMinAmount(): ?string { return null; }
+    public function getToMinAmount(): ?string { return null; }
+    public function getMaxAmount(): ?string { return null; }
+    public function getMerchant(): string { return 'my_merchant_code'; }
+    public function getPrecision(): int { return 6; }
+    public function getCategoryIds(): array { return []; }
+    public function getIconId(): ?int { return null; }
+    public function getBaseCurrency(): string { return 'USD'; }
+    public function getMerchantTicker(): ?string { return null; }
+    public function getMerchantNetwork(): ?string { return 'TRC20'; }
+    public function getUsdQuoteId(): ?int { return $this->usdQuoteId; }
+    public function getConfirmationsCount(): int { return 12; }
+    public function getExportShorthand(): ?string { return null; }
+    public function isBulkEditing(): ?bool { return null; }
+    public function isTxHashInputShown(): ?bool { return null; }
+    public function isRequisiteVerificationRequired(): ?bool { return null; }
+    public function getMaxPayoutPeriodH(): ?int { return null; }
+    public function getSocialRequiredFromAmountUsd(): ?string { return null; }
+    public function getName(): ?array { return ['en' => 'Tether USD']; }
+    public function getTelegramAnnotation(): ?array { return null; }
+    public function getAnnotationFrom(): ?array { return null; }
+    public function getAnnotationTo(): ?array { return null; }
+    public function getMerchantDescription(): ?array { return null; }
+    public function getCustomFields(): ?array { return null; }
+});
+```
+
+Required fields
+- `getShorthand(): string`
+- `getMerchant(): string`
+- `getPrecision(): int`
+- `getCategoryIds(): list<int>` (use an empty list if none)
+- `getBaseCurrency(): string` (e.g., `USD`)
+- `getConfirmationsCount(): int`
+
+Optional fields (common)
+- Amount/limits: `getAmount()`, `getMinAmountUsd()`, `getFromMinAmount()`, `getToMinAmount()`, `getMaxAmount()` — decimal strings with dot separator
+- Metadata: `getIconId()`, `getExportShorthand()`, localized names/annotations/description maps
+- Flags: `isBulkEditing()`, `isTxHashInputShown()`, `isRequisiteVerificationRequired()`
+- Other: `getMaxPayoutPeriodH()`, `getSocialRequiredFromAmountUsd()`
+- Quote reference: `getUsdQuoteId()` (ID of the USD quote/pair; may be null)
+- Merchant specifics: `getMerchantTicker()`, `getMerchantNetwork()`
+
+Custom fields attachment
+- Shape: `list<array{id:int, direction:string, order?:int|null, is_main_requisite?:bool}>`
+- `direction` must be one of `from` or `to`.
+
+Looking up related IDs
+- Quotes: resolve the USD quote ID via your application (e.g., using `QuoteRepositoryInterface`).
+- Categories: use `CategoryRepositoryInterface` to discover category IDs.
+- Custom fields: use `CustomFieldRepositoryInterface` to discover custom field IDs.
+- Currencies: use `CurrencyRepositoryInterface` to fetch existing currencies by ID or shorthand.
+
+Notes
+- All decimals must be string values using a dot (e.g., "1000.00").
+- Creating a currency typically emits `CurrencyCreatedEventInterface`.
+
+### Repositories (Currency domain)
+
+The framework exposes repository contracts to read related entities:
+
+```
+use LaraPluginFramework\Contracts\Quote\Repository\QuoteRepositoryInterface;
+use LaraPluginFramework\Contracts\Currency\Repository\CategoryRepositoryInterface;
+use LaraPluginFramework\Contracts\Currency\Repository\CustomFieldRepositoryInterface;
+use LaraPluginFramework\Contracts\Currency\Repository\CurrencyRepositoryInterface;
+
+/** @var QuoteRepositoryInterface $quotes */
+/** @var CategoryRepositoryInterface $categories */
+/** @var CustomFieldRepositoryInterface $customFields */
+/** @var CurrencyRepositoryInterface $currencies */
+
+// Quotes
+$quote = $quotes->findById(123);
+$quotePage = $quotes->paginate(page: 1, perPage: 20);
+
+// Categories
+$allCategories = iterator_to_array($categories->all());
+$someCategories = iterator_to_array($categories->getByIds([1, 2, 3]));
+
+// Custom fields
+$allFields = iterator_to_array($customFields->all());
+$field = $customFields->findById(10);
+
+// Currencies
+$btc = $currencies->findByShorthand('BTC');
+$byIds = iterator_to_array($currencies->getByIds([1, 2]));
+```
+
+
 ### Creating a Merchant
 
 Extend `AbstractMerchant` or implement `MerchantInterface`:
