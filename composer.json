@@ -1,5 +1,5 @@
 {
-  "name": "lara-script-dev/lara-plugin-framework",
+  "name": "cakealliance/lara-plugin-framework",
   "type": "library",
   "description": "Contracts that define how Lara script communicates with plugins.",
   "keywords": ["exchanger-core", "plugins", "contracts"],

@@ -64,6 +64,8 @@ All plugins must implement the `LaraPluginFramework` contracts, which provide a 
 
 Quick link: see the Required Minimal Plugin Layout at [Mandatory Plugin Structure](#mandatory-plugin-structure).
 
+For local plugin installation (drop‑in), see [LocalPlugins.md](LocalPlugins.md).
+
 ---
 
 ## Getting Started
