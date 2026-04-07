@@ -35,6 +35,15 @@ This guide provides comprehensive documentation for developing plugins for the L
 - [Order Service](#order-service)
   - [Reading Orders](#reading-orders)
   - [Modifying Orders](#modifying-orders)
+- [Order Creation Hooks](#order-creation-hooks)
+  - [Creation Interceptor](#creation-interceptor)
+  - [Creation Rule Provider](#creation-rule-provider)
+- [Order Recalculation Hook](#order-recalculation-hook)
+- [Order Metadata](#order-metadata)
+- [Response Enrichers](#response-enrichers)
+  - [Order Response Enricher](#order-response-enricher)
+  - [Direction Response Enricher](#direction-response-enricher)
+  - [Public vs Admin Context](#public-vs-admin-context)
 - [Entities Reference](#entities-reference)
 - [Best Practices](#best-practices)
 - [Examples](#examples)
@@ -54,6 +63,8 @@ The Lara Exchange plugin system allows third-party developers to extend the plat
 All plugins must implement the `LaraPluginFramework` contracts, which provide a standardized interface for communication between the core platform and plugins.
 
 Quick link: see the Required Minimal Plugin Layout at [Mandatory Plugin Structure](#mandatory-plugin-structure).
+
+For local plugin installation (drop‑in), see [LocalPlugins.md](LocalPlugins.md).
 
 ---
 
@@ -331,6 +342,7 @@ class SettingsGetter implements SettingsGetterInterface
 |----------|-------------|
 | `OrderRepositoryInterface` | Read orders by ID or hash |
 | `OrderServiceInterface` | Modify order status and amounts |
+| `OrderMetadataServiceInterface` | Read/write order metadata |
 | `AdminUserGetterInterface` | Get current admin user |
 | `FeatureFlagRepositoryInterface` | Check feature flags |
 | `CompositeRateProviderInterface` | Add rate providers |
@@ -1300,6 +1312,363 @@ class MyService
 | `changePaidAmount(Order, Decimal)` | Update paid amount |
 | `changeTransactionHash(Order, string)` | Set transaction hash |
 | `setHash(Order, string)` | Set order hash |
+
+---
+
+## Order Creation Hooks
+
+Plugins can hook into the order creation process to modify amounts, attach metadata, and add validation rules.
+
+### Creation Interceptor
+
+Implement `OrderCreationInterceptorInterface` to modify IN/OUT amounts or attach metadata when an order is created.
+
+```php
+<?php
+
+namespace MyPlugin\Services;
+
+use LaraPluginFramework\Contracts\Order\Service\OrderCreationInterceptorInterface;
+use LaraPluginFramework\DTO\OrderCreationInterceptorResult;
+
+class MyFeeInterceptor implements OrderCreationInterceptorInterface
+{
+    public function intercept(
+        int $directionId,
+        string $inAmount,
+        string $outAmount,
+        array $requestData,
+    ): OrderCreationInterceptorResult {
+        // Check if your plugin's feature is requested
+        if (empty($requestData['my_feature'])) {
+            return OrderCreationInterceptorResult::unchanged($inAmount, $outAmount);
+        }
+
+        // Calculate fee and adjust amounts
+        $fee = bcmul($inAmount, '0.05', 16); // 5% fee
+        $newIn = bcadd($inAmount, $fee, 16);
+
+        return new OrderCreationInterceptorResult(
+            inAmount: $newIn,
+            outAmount: $outAmount,
+            metadata: [
+                'my_plugin_data' => json_encode([
+                    'fee_amount' => $fee,
+                    'feature_enabled' => true,
+                ]),
+            ],
+            modified: true,
+        );
+    }
+}
+```
+
+**`OrderCreationInterceptorResult` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `inAmount` | `string` | The (possibly adjusted) IN amount |
+| `outAmount` | `string` | The (possibly adjusted) OUT amount |
+| `metadata` | `array` | Key-value pairs stored on the order as metadata |
+| `modified` | `bool` | Whether amounts were changed |
+
+**Register with tag:**
+
+```php
+$this->app->bind(MyFeeInterceptor::class);
+$this->app->tag(MyFeeInterceptor::class, 'order_creation_interceptors');
+```
+
+### Creation Rule Provider
+
+Implement `OrderCreationRuleProviderInterface` to add validation rules to the order creation request. This allows your plugin to require additional fields from the client.
+
+```php
+<?php
+
+namespace MyPlugin\Services;
+
+use LaraPluginFramework\Contracts\Order\Service\OrderCreationRuleProviderInterface;
+
+class MyRuleProvider implements OrderCreationRuleProviderInterface
+{
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    public function rules(): array
+    {
+        return [
+            'my_feature' => ['sometimes', 'boolean'],
+        ];
+    }
+}
+```
+
+**Register with tag:**
+
+```php
+$this->app->bind(MyRuleProvider::class);
+$this->app->tag(MyRuleProvider::class, 'order_creation_rule_providers');
+```
+
+---
+
+## Order Recalculation Hook
+
+Implement `OrderRecalculationInterceptorInterface` to adjust the OUT amount when an order is recalculated (rate change) or the IN amount is changed (e.g., client underpaid).
+
+This hook runs during `OrderService::recalculate()` and `OrderService::changeIn()`.
+
+```php
+<?php
+
+namespace MyPlugin\Services;
+
+use LaraPluginFramework\Contracts\Entities\Order;
+use LaraPluginFramework\Contracts\Order\Service\OrderMetadataServiceInterface;
+use LaraPluginFramework\Contracts\Order\Service\OrderRecalculationInterceptorInterface;
+use LaraPluginFramework\DTO\OrderRecalculationInterceptorResult;
+
+class MyRecalculationInterceptor implements OrderRecalculationInterceptorInterface
+{
+    public function __construct(
+        private readonly OrderMetadataServiceInterface $metadataService,
+    ) {
+    }
+
+    public function adjustOut(
+        Order $order,
+        string $inAmount,
+        string $outAmount,
+        string $rate,
+    ): OrderRecalculationInterceptorResult {
+        // Read plugin metadata stored during creation
+        $raw = $this->metadataService->get($order, 'my_plugin_data');
+
+        if ($raw === null) {
+            return OrderRecalculationInterceptorResult::unchanged($outAmount);
+        }
+
+        $data = is_string($raw) ? json_decode($raw, true) : $raw;
+        $feeAmount = $data['fee_amount'] ?? '0';
+
+        // Subtract fee from IN, then multiply by rate
+        $effectiveIn = bcsub($inAmount, $feeAmount, 16);
+        $adjustedOut = bcmul($effectiveIn, $rate, 16);
+
+        return new OrderRecalculationInterceptorResult(
+            outAmount: $adjustedOut,
+            modified: true,
+        );
+    }
+}
+```
+
+**`OrderRecalculationInterceptorResult` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `outAmount` | `string` | The (possibly adjusted) OUT amount |
+| `modified` | `bool` | Whether the OUT amount was changed |
+
+**Register with tag:**
+
+```php
+$this->app->bind(MyRecalculationInterceptor::class);
+$this->app->tag(MyRecalculationInterceptor::class, 'order_recalculation_interceptors');
+```
+
+---
+
+## Order Metadata
+
+Use `OrderMetadataServiceInterface` to read and write arbitrary key-value data on orders. This is the primary way for plugins to persist order-specific state.
+
+Metadata stored via creation interceptors (in `OrderCreationInterceptorResult::metadata`) is accessible through this service.
+
+```php
+use LaraPluginFramework\Contracts\Order\Service\OrderMetadataServiceInterface;
+use LaraPluginFramework\Contracts\Entities\Order;
+
+class MyService
+{
+    public function __construct(
+        private readonly OrderMetadataServiceInterface $metadataService,
+    ) {
+    }
+
+    public function example(Order $order): void
+    {
+        // Write
+        $this->metadataService->set($order, 'my_key', 'my_value');
+
+        // Read (with optional default)
+        $value = $this->metadataService->get($order, 'my_key'); // 'my_value'
+        $missing = $this->metadataService->get($order, 'other', 'default'); // 'default'
+
+        // Check existence
+        $exists = $this->metadataService->has($order, 'my_key'); // true
+    }
+}
+```
+
+**Available methods:**
+
+| Method | Description |
+|--------|-------------|
+| `set(Order, string $key, mixed $value)` | Store a value |
+| `get(Order, string $key, mixed $default = null)` | Read a value |
+| `has(Order, string $key)` | Check if a key exists |
+
+---
+
+## Response Enrichers
+
+Response enrichers allow plugins to add extra fields to Order and Direction API responses. The platform supports separate enrichers for **public** (end-user API) and **admin** (admin panel API) contexts.
+
+### Order Response Enricher
+
+Implement `OrderResponseEnricherInterface` to add fields to order responses:
+
+```php
+<?php
+
+namespace MyPlugin\Services;
+
+use LaraPluginFramework\Contracts\Entities\Order;
+use LaraPluginFramework\Contracts\Order\Service\OrderResponseEnricherInterface;
+use LaraPluginFramework\Contracts\Order\Service\OrderMetadataServiceInterface;
+
+class MyOrderResponseEnricher implements OrderResponseEnricherInterface
+{
+    public function __construct(
+        private readonly OrderMetadataServiceInterface $metadataService,
+    ) {
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function enrich(Order $order): array
+    {
+        $data = $this->metadataService->get($order, 'my_plugin_data');
+
+        if ($data === null) {
+            return [];
+        }
+
+        $decoded = is_string($data) ? json_decode($data, true) : $data;
+
+        return [
+            'my_feature_enabled' => $decoded['feature_enabled'] ?? false,
+            'my_fee_amount' => $decoded['fee_amount'] ?? '0',
+        ];
+    }
+}
+```
+
+### Direction Response Enricher
+
+Implement `DirectionResponseEnricherInterface` to add fields to direction responses:
+
+```php
+<?php
+
+namespace MyPlugin\Services;
+
+use LaraPluginFramework\Contracts\Entities\Direction;
+use LaraPluginFramework\Contracts\Direction\Service\DirectionResponseEnricherInterface;
+
+class MyDirectionResponseEnricher implements DirectionResponseEnricherInterface
+{
+    /**
+     * @return array<string, mixed>
+     */
+    public function enrich(Direction $direction): array
+    {
+        return [
+            'my_feature_available' => true,
+            'my_fee_percent' => '5',
+        ];
+    }
+}
+```
+
+### Public vs Admin Context
+
+Enrichers are registered under separate tags depending on context:
+
+| Tag Constant | Context | Used In |
+|-------------|---------|---------|
+| `ResponseEnricherTag::PUBLIC_ORDER` | End-user API | `OrderResource` |
+| `ResponseEnricherTag::ADMIN_ORDER` | Admin panel API | `OrderTransformer` |
+| `ResponseEnricherTag::PUBLIC_DIRECTION` | End-user API | `DirectionResource` |
+| `ResponseEnricherTag::ADMIN_DIRECTION` | Admin panel API | `DirectionTransformer` |
+
+This allows plugins to show different data per context (e.g., hide internal fee details from end-users, show them to admins).
+
+**Register with tags:**
+
+```php
+use LaraPluginFramework\Contracts\ResponseEnricherTag;
+
+// Same enricher for both contexts
+$this->app->bind(MyOrderResponseEnricher::class);
+$this->app->tag(MyOrderResponseEnricher::class, ResponseEnricherTag::PUBLIC_ORDER);
+$this->app->tag(MyOrderResponseEnricher::class, ResponseEnricherTag::ADMIN_ORDER);
+
+// Or different enrichers per context
+$this->app->bind(MyPublicDirectionEnricher::class);
+$this->app->tag(MyPublicDirectionEnricher::class, ResponseEnricherTag::PUBLIC_DIRECTION);
+
+$this->app->bind(MyAdminDirectionEnricher::class);
+$this->app->tag(MyAdminDirectionEnricher::class, ResponseEnricherTag::ADMIN_DIRECTION);
+```
+
+**Complete service provider example with all hooks:**
+
+```php
+<?php
+
+namespace MyPlugin\Providers;
+
+use Illuminate\Support\ServiceProvider;
+use LaraPluginFramework\Contracts\PluginServiceProviderInterface;
+use LaraPluginFramework\Contracts\ResponseEnricherTag;
+
+class MyPluginServiceProvider extends ServiceProvider implements PluginServiceProviderInterface
+{
+    public function register(): void
+    {
+        // Order creation hooks
+        $this->app->bind(MyFeeInterceptor::class);
+        $this->app->tag(MyFeeInterceptor::class, 'order_creation_interceptors');
+
+        $this->app->bind(MyRuleProvider::class);
+        $this->app->tag(MyRuleProvider::class, 'order_creation_rule_providers');
+
+        // Order recalculation hook
+        $this->app->bind(MyRecalculationInterceptor::class);
+        $this->app->tag(MyRecalculationInterceptor::class, 'order_recalculation_interceptors');
+
+        // Response enrichers
+        $this->app->bind(MyOrderResponseEnricher::class);
+        $this->app->tag(MyOrderResponseEnricher::class, ResponseEnricherTag::PUBLIC_ORDER);
+        $this->app->tag(MyOrderResponseEnricher::class, ResponseEnricherTag::ADMIN_ORDER);
+
+        $this->app->bind(MyDirectionResponseEnricher::class);
+        $this->app->tag(MyDirectionResponseEnricher::class, ResponseEnricherTag::PUBLIC_DIRECTION);
+        $this->app->tag(MyDirectionResponseEnricher::class, ResponseEnricherTag::ADMIN_DIRECTION);
+    }
+
+    public function implementations(): array
+    {
+        return [
+            // ... settings implementations
+        ];
+    }
+}
+```
 
 ---
 
