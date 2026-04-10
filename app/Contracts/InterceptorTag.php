@@ -16,4 +16,5 @@ final class InterceptorTag
     public const ORDER_CREATION = 'order_creation_interceptors';
     public const ORDER_CREATION_RULES = 'order_creation_rule_providers';
     public const ORDER_RECALCULATION = 'order_recalculation_interceptors';
+    public const ORDER_REPORT_COLUMNS = 'order_report_column_providers';
 }

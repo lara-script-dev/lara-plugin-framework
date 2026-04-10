@@ -44,6 +44,10 @@ This guide provides comprehensive documentation for developing plugins for the L
   - [Order Response Enricher](#order-response-enricher)
   - [Direction Response Enricher](#direction-response-enricher)
   - [Public vs Admin Context](#public-vs-admin-context)
+- [Order Report Columns](#order-report-columns)
+  - [Adding Columns to Order Report](#adding-columns-to-order-report)
+  - [Multiple Columns per Plugin](#multiple-columns-per-plugin)
+  - [Translations for Column Headers](#translations-for-column-headers)
 - [Entities Reference](#entities-reference)
 - [Best Practices](#best-practices)
 - [Examples](#examples)
@@ -1659,6 +1663,15 @@ class MyPluginServiceProvider extends ServiceProvider implements PluginServicePr
         $this->app->bind(MyDirectionResponseEnricher::class);
         $this->app->tag(MyDirectionResponseEnricher::class, ResponseEnricherTag::PUBLIC_DIRECTION);
         $this->app->tag(MyDirectionResponseEnricher::class, ResponseEnricherTag::ADMIN_DIRECTION);
+
+        // Order report columns
+        $this->app->bind(MyReportColumnsProvider::class);
+        $this->app->tag(MyReportColumnsProvider::class, 'order_report_column_providers');
+    }
+
+    public function boot(): void
+    {
+        $this->loadTranslationsFrom(__DIR__ . '/../resources/lang', 'my-plugin');
     }
 
     public function implementations(): array
@@ -1669,6 +1682,133 @@ class MyPluginServiceProvider extends ServiceProvider implements PluginServicePr
     }
 }
 ```
+
+---
+
+## Order Report Columns
+
+Plugins can add custom columns to the admin order report (XLSX export). Each plugin provides column headers and per-order cell values via `OrderReportColumnsProviderInterface`.
+
+### Adding Columns to Order Report
+
+Implement `OrderReportColumnsProviderInterface` to add columns:
+
+```php
+<?php
+
+namespace MyPlugin\Services;
+
+use Illuminate\Contracts\Translation\Translator;
+use LaraPluginFramework\Contracts\Entities\Order;
+use LaraPluginFramework\Contracts\Order\Service\OrderMetadataServiceInterface;
+use LaraPluginFramework\Contracts\Order\Service\OrderReportColumnsProviderInterface;
+
+class MyReportColumnsProvider implements OrderReportColumnsProviderInterface
+{
+    public function __construct(
+        private readonly Translator $translator,
+        private readonly OrderMetadataServiceInterface $metadataService,
+    ) {
+    }
+
+    /**
+     * @return array<string>
+     */
+    public function getHeaders(string $langCode): array
+    {
+        return [
+            $this->translator->get('my-plugin::messages.report_column', [], $langCode),
+        ];
+    }
+
+    /**
+     * @return array<mixed>
+     */
+    public function getValues(Order $order): array
+    {
+        $raw = $this->metadataService->get($order, 'my_plugin_data');
+
+        if (!is_string($raw) || $raw === '') {
+            return ['-'];
+        }
+
+        $decoded = json_decode($raw, true);
+
+        return [
+            is_array($decoded) && ($decoded['is_active'] ?? false) ? '+' : '-',
+        ];
+    }
+}
+```
+
+**Register with tag in your ServiceProvider:**
+
+```php
+$this->app->bind(MyReportColumnsProvider::class);
+$this->app->tag(MyReportColumnsProvider::class, 'order_report_column_providers');
+```
+
+### Multiple Columns per Plugin
+
+A single provider can return multiple columns. The number of headers **must match** the number of values:
+
+```php
+public function getHeaders(string $langCode): array
+{
+    return [
+        $this->translator->get('my-plugin::messages.col_status', [], $langCode),
+        $this->translator->get('my-plugin::messages.col_fee_type', [], $langCode),
+        $this->translator->get('my-plugin::messages.col_fee_amount', [], $langCode),
+    ];
+}
+
+public function getValues(Order $order): array
+{
+    $raw = $this->metadataService->get($order, 'my_plugin_data');
+    $decoded = is_string($raw) ? json_decode($raw, true) : null;
+
+    if (!is_array($decoded)) {
+        return ['-', '-', '-'];
+    }
+
+    return [
+        ($decoded['is_active'] ?? false) ? '+' : '-',
+        $decoded['fee_type'] ?? '-',
+        $decoded['fee_amount'] ?? '-',
+    ];
+}
+```
+
+> **Important:** Always return the same number of elements from `getHeaders()` and `getValues()`. Each header corresponds to a column, and each value fills the cell in that column for the given order.
+
+### Translations for Column Headers
+
+Register plugin translations in your `ServiceProvider::boot()`:
+
+```php
+public function boot(): void
+{
+    $this->loadTranslationsFrom(__DIR__ . '/../resources/lang', 'my-plugin');
+}
+```
+
+Create translation files per language:
+
+```
+MyPlugin/
+  resources/lang/
+    en/messages.php   -> ['report_column' => 'My Feature']
+    ru/messages.php   -> ['report_column' => 'Моя функция']
+    uk/messages.php   -> ['report_column' => 'Моя функція']
+```
+
+Then reference them in `getHeaders()`:
+
+```php
+$this->translator->get('my-plugin::messages.report_column', [], $langCode);
+```
+
+This keeps translations self-contained within the plugin — no changes to the core application language files are needed.
 
 ---
 
