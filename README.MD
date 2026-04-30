@@ -504,15 +504,29 @@ Implement `SettingsValueGetterInterface` to return current values:
 namespace MyPlugin\Settings;
 
 use LaraPluginFramework\Contracts\SettingsValueGetterInterface;
+use LaraPluginFramework\DTO\Filters;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class SettingsValueGetter implements SettingsValueGetterInterface
 {
+    public function __construct(
+        private readonly Request $request,
+    ) {
+    }
+
     /**
      * @return array<string, mixed>
      */
     public function get(): array
     {
+        $page = (int) $this->request->query('page', 1);
+        $perPage = (int) $this->request->query('perPage', 15);
+        $filters = Filters::fromArray(
+            is_array($this->request->query('filters')) ? $this->request->query('filters') : []
+        );
+
+        // Use $page, $perPage and $filters in your repository layer when settings data is filterable.
         $settings = DB::table('my_plugin_settings')
             ->where('key', 'main')
             ->first();
@@ -531,6 +545,22 @@ class SettingsValueGetter implements SettingsValueGetterInterface
     }
 }
 ```
+
+When Lara Script requests settings, it may pass query params in the following shape:
+
+```php
+[
+    'page' => '1',
+    'perPage' => '15',
+    'filters' => [
+        'from_id' => '1',
+        'to_id' => '2',
+        'enabled' => '1',
+    ],
+]
+```
+
+Use `Illuminate\Http\Request` to read these query params inside your settings getter and pass normalized filters to your repository layer, for example `DirectionRepositoryInterface::getIdsByFilters()`.
 
 ---
 
