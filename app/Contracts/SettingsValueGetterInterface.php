@@ -10,6 +10,8 @@ namespace LaraPluginFramework\Contracts;
 interface SettingsValueGetterInterface
 {
     /**
+     * Implementations may read query params from the current Illuminate HTTP request.
+     *
      * @return array<string, mixed> Persisted settings for the requested context.
      */
     public function get(): array;
