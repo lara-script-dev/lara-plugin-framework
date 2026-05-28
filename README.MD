@@ -39,6 +39,7 @@ This guide provides comprehensive documentation for developing plugins for the L
   - [Creation Interceptor](#creation-interceptor)
   - [Creation Rule Provider](#creation-rule-provider)
 - [Order Recalculation Hook](#order-recalculation-hook)
+- [Direction Rate Override Hook](#direction-rate-override-hook)
 - [Order Metadata](#order-metadata)
 - [Response Enrichers](#response-enrichers)
   - [Order Response Enricher](#order-response-enricher)
@@ -600,6 +601,7 @@ The platform dispatches events for major domain actions. Plugins can listen to t
 | Created | `DirectionCreatedEventInterface` | New direction created |
 | Updated | `DirectionUpdatedEventInterface` | Direction modified |
 | Deleted | `DirectionDeletedEventInterface` | Direction removed |
+| Overridden Rates Calculated | `OverriddenDirectionRatesCalculatedEventInterface` | Core computed "baseline" rates for plugin-managed directions (see [Direction Rate Override Hook](#direction-rate-override-hook)) |
 
 #### Quote Events
 
@@ -1511,6 +1513,166 @@ class MyRecalculationInterceptor implements OrderRecalculationInterceptorInterfa
 $this->app->bind(MyRecalculationInterceptor::class);
 $this->app->tag(MyRecalculationInterceptor::class, 'order_recalculation_interceptors');
 ```
+
+---
+
+## Direction Rate Override Hook
+
+Lets a plugin take over the rate of selected directions. Core continues to
+calculate the "baseline" rate for them (using its standard formula
+`quoteRate × direction.percent × globalCoefficient`) and emits the
+`OverriddenDirectionRatesCalculatedEventInterface` event with the calculated
+values — the plugin records them in its own storage and uses them as the
+input for computing the final `directions.rate` itself.
+
+Mechanism consists of two parts:
+
+1. **Interceptor** — the plugin declares which `direction_id`s it manages,
+   so core skips writing `directions.rate` for them.
+2. **Event listener** — the plugin receives the calculated "baseline" rates
+   for its directions and persists them.
+
+### Declaring Managed Directions
+
+Implement `DirectionRateOverrideInterceptorInterface` to declare which
+directions your plugin manages. Core calls every implementation tagged under
+`InterceptorTag::DIRECTION_RATE_OVERRIDE` and merges the returned IDs.
+
+```php
+<?php
+
+namespace MyPlugin\Services;
+
+use Illuminate\Database\DatabaseManager;
+use LaraPluginFramework\Contracts\Direction\Service\DirectionRateOverrideInterceptorInterface;
+
+final class MyManagedDirectionsInterceptor implements DirectionRateOverrideInterceptorInterface
+{
+    public function __construct(
+        private readonly DatabaseManager $databaseManager,
+    ) {
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function getOverriddenDirectionIds(): array
+    {
+        if (false === $this->isPluginEnabled()) {
+            return [];
+        }
+
+        return array_values(
+            $this->databaseManager->table('my_plugin_direction_settings')
+                ->where('active', true)
+                ->pluck('direction_id')
+                ->all()
+        );
+    }
+
+    private function isPluginEnabled(): bool
+    {
+        return $this->databaseManager->table('my_plugin_settings')
+            ->where('enabled', true)
+            ->exists();
+    }
+}
+```
+
+### Receiving Calculated Baseline Rates
+
+Implement a listener for `OverriddenDirectionRatesCalculatedEventInterface`.
+The payload is the union of overridden directions across **all** subscribed
+plugins, so each listener must filter the payload to its own directions
+before applying a batch UPDATE to its storage.
+
+```php
+<?php
+
+namespace MyPlugin\Listeners;
+
+use Illuminate\Database\DatabaseManager;
+use LaraPluginFramework\Contracts\Events\OverriddenDirectionRatesCalculatedEventInterface;
+
+final class RecordBaselinesListener
+{
+    public function __construct(
+        private readonly DatabaseManager $databaseManager,
+    ) {
+    }
+
+    public function handle(OverriddenDirectionRatesCalculatedEventInterface $event): void
+    {
+        $rates = $event->directionRates();
+
+        if ([] === $rates) {
+            return;
+        }
+
+        $payloadIds = array_column($rates, 'direction_id');
+        $ownActiveIds = $this->databaseManager->table('my_plugin_direction_settings')
+            ->whereIn('direction_id', $payloadIds)
+            ->where('active', true)
+            ->pluck('direction_id')
+            ->all();
+
+        if ([] === $ownActiveIds) {
+            return;
+        }
+
+        $rateByDirectionId = array_column($rates, 'rate', 'direction_id');
+
+        foreach ($ownActiveIds as $directionId) {
+            $directionId = (int) $directionId;
+
+            if (false === isset($rateByDirectionId[$directionId])) {
+                continue;
+            }
+
+            $this->databaseManager->table('my_plugin_direction_settings')
+                ->where('direction_id', $directionId)
+                ->update([
+                    'baseline_rate' => (string) $rateByDirectionId[$directionId],
+                    'updated_at' => now(),
+                ]);
+        }
+    }
+}
+```
+
+### Registering Interceptor and Listener
+
+```php
+use Illuminate\Contracts\Events\Dispatcher;
+use LaraPluginFramework\Contracts\Events\OverriddenDirectionRatesCalculatedEventInterface;
+use LaraPluginFramework\Contracts\InterceptorTag;
+
+public function register(): void
+{
+    $this->app->bind(MyManagedDirectionsInterceptor::class);
+    $this->app->tag(MyManagedDirectionsInterceptor::class, InterceptorTag::DIRECTION_RATE_OVERRIDE);
+}
+
+public function boot(Dispatcher $events): void
+{
+    $events->listen(
+        OverriddenDirectionRatesCalculatedEventInterface::class,
+        [RecordBaselinesListener::class, 'handle'],
+    );
+}
+```
+
+### Behaviour Notes
+
+- If the plugin is disabled or a direction is not active in plugin settings,
+  the interceptor returns `[]` for that direction — core writes its
+  `directions.rate` normally, and the listener won't receive a payload entry
+  for it.
+- Multiple plugins can subscribe to the same tag — the event payload is the
+  union of all overridden directions; each listener is responsible for
+  filtering its own.
+- `directions.rate` of managed directions is **not** updated by core. The
+  plugin must compute and persist the final rate itself.
 
 ---
 
