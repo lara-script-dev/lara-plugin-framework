@@ -1516,6 +1516,49 @@ $this->app->tag(MyRecalculationInterceptor::class, 'order_recalculation_intercep
 
 ---
 
+## Direction Cities
+
+Plugins can read cities attached to exchange directions without extending the
+base `Direction` interface:
+
+```php
+use LaraPluginFramework\Contracts\Direction\Repository\CityRepositoryInterface;
+use LaraPluginFramework\Contracts\Direction\Repository\DirectionCityRepositoryInterface;
+
+/** @var DirectionCityRepositoryInterface $directionCities */
+$directionCities = app(DirectionCityRepositoryInterface::class);
+
+foreach ($directionCities->getByDirectionId($directionId) as $directionCity) {
+    $city = $directionCity->getCity();
+
+    $city->getId();
+    $city->getCode();
+    $city->getName();
+    $directionCity->getEffectiveRate();
+}
+```
+
+`getByDirectionId()` and `getByDirectionIds()` return enabled cities by
+default. Pass `false` as the last argument when disabled cities are required.
+Use `CityRepositoryInterface` for direct lookup by local city ID or stable city
+code.
+
+To set a rate for one city without changing the shared `directions.rate`, use:
+
+```php
+use LaraPluginFramework\Contracts\Direction\Service\DirectionCityRateServiceInterface;
+
+/** @var DirectionCityRateServiceInterface $cityRates */
+$cityRates = app(DirectionCityRateServiceInterface::class);
+$result = $cityRates->setFixedRate($direction, $cityId, $rate);
+```
+
+The core implementation writes `direction_cities.fixed_rate` and
+`fixed_rate_set_at`. `DirectionCity::getEffectiveRate()` returns `fixed_rate`
+when present, otherwise `directions.rate × coefficient`.
+
+---
+
 ## Direction Rate Override Hook
 
 Lets a plugin take over the rate of selected directions. Core continues to
