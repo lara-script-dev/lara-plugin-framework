@@ -10,4 +10,5 @@ interface Currency
     public function getName(?string $locale = null): string;
     public function getBaseCurrency(): string;
     public function getShorthand(): string;
+    public function getIconPath(): ?string;
 }
