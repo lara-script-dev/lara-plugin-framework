@@ -20,6 +20,7 @@ This guide provides comprehensive documentation for developing plugins for the L
   - [Defining Settings Schema](#defining-settings-schema)
   - [Saving Settings](#saving-settings)
   - [Retrieving Settings](#retrieving-settings)
+- [Organization Context](#organization-context)
 - [Events & Hooks](#events--hooks)
   - [Available Events](#available-events)
   - [Listening to Events](#listening-to-events)
@@ -562,6 +563,36 @@ When Lara Script requests settings, it may pass query params in the following sh
 ```
 
 Use `Illuminate\Http\Request` to read these query params inside your settings getter and pass normalized filters to your repository layer, for example `DirectionRepositoryInterface::getIdsByFilters()`.
+
+---
+
+## Organization Context
+
+Plugins that call an organization-scoped external API can obtain the current
+Lara installation's external organization UID through
+`OrganizationOasisUidProviderInterface.php`:
+
+```php
+use LaraPluginFramework\Contracts\Organization\OrganizationOasisUidProviderInterface.php;
+
+final readonly class IntegrationClient
+{
+    public function __construct(
+        private OrganizationOasisUidProviderInterface.php $organizationUidProvider,
+    ) {
+    }
+
+    public function organizationUid(): string
+    {
+        return $this->organizationUidProvider->getOrganizationUid();
+    }
+}
+```
+
+The host application owns the implementation. Plugins must not read a host
+merchant model, database table, or environment variable directly. An empty
+value means that the host has no organization UID configured; integrations
+should fail closed before sending an external request.
 
 ---
 
