@@ -50,6 +50,7 @@ This guide provides comprehensive documentation for developing plugins for the L
   - [Adding Columns to Order Report](#adding-columns-to-order-report)
   - [Multiple Columns per Plugin](#multiple-columns-per-plugin)
   - [Translations for Column Headers](#translations-for-column-headers)
+- [Operator Status](#operator-status)
 - [Entities Reference](#entities-reference)
 - [Best Practices](#best-practices)
 - [Examples](#examples)
@@ -897,6 +898,7 @@ $quotePage = $quotes->paginate(page: 1, perPage: 20);
 // Categories
 $allCategories = iterator_to_array($categories->all());
 $someCategories = iterator_to_array($categories->getByIds([1, 2, 3]));
+$currencyCategoryIds = $categories->getIdsByCurrencyId(42);
 
 // Custom fields
 $allFields = iterator_to_array($customFields->all());
@@ -2075,6 +2077,31 @@ $this->translator->get('my-plugin::messages.report_column', [], $langCode);
 ```
 
 This keeps translations self-contained within the plugin — no changes to the core application language files are needed.
+
+---
+
+## Operator Status
+
+`OperatorStatusProviderInterface` reports whether the site is currently within its operator working hours, as configured in the application settings (manual online/offline switch or the scheduled working hours). Use it when a plugin feature must be available only while operators are online.
+
+```php
+use LaraPluginFramework\Contracts\OperatorStatusProviderInterface;
+
+final class MyService
+{
+    public function __construct(
+        private readonly OperatorStatusProviderInterface $operatorStatus,
+    ) {
+    }
+
+    public function isAvailable(): bool
+    {
+        return $this->operatorStatus->isOnline();
+    }
+}
+```
+
+The application resolves the status itself, including the configured timezone — plugins must not compute working hours on their own.
 
 ---
 
