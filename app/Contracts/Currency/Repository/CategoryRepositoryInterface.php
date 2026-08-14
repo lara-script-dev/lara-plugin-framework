@@ -23,5 +23,12 @@ interface CategoryRepositoryInterface
      * @return iterable<Category>
      */
     public function all(): iterable;
+
+    /**
+     * Category IDs the currency belongs to, ordered by category priority descending.
+     *
+     * @return list<int>
+     */
+    public function getIdsByCurrencyId(int $currencyId): array;
 }
 
