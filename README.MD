@@ -17,6 +17,7 @@ This guide provides comprehensive documentation for developing plugins for the L
   - [Service Provider](#service-provider)
   - [Dependency Injection](#dependency-injection)
 - [Settings System](#settings-system)
+  - [Site Timezone](#site-timezone)
   - [Defining Settings Schema](#defining-settings-schema)
   - [Saving Settings](#saving-settings)
   - [Retrieving Settings](#retrieving-settings)
@@ -361,6 +362,28 @@ class SettingsGetter implements SettingsGetterInterface
 ## Settings System
 
 The settings system allows plugins to define configurable options that administrators can manage through the admin panel.
+
+### Site Timezone
+
+Plugins that present dates to users can obtain the site's configured IANA
+timezone through `TimezoneProviderInterface`. The host implements this contract;
+plugins must not read host application configuration directly.
+
+```php
+use LaraPluginFramework\Contracts\Settings\TimezoneProviderInterface;
+
+final class DatePresenter
+{
+    public function __construct(private TimezoneProviderInterface $timezoneProvider)
+    {
+    }
+
+    public function timezone(): string
+    {
+        return $this->timezoneProvider->getTimezone();
+    }
+}
+```
 
 ### Defining Settings Schema
 
