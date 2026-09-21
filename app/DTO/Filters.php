@@ -95,6 +95,19 @@ final class Filters implements Countable, IteratorAggregate
      */
     private static function normalizeFilterArray(int|string $key, array $filter): ?Filter
     {
+        if (!array_key_exists('by', $filter) && !array_key_exists('value', $filter)) {
+            if (!is_string($key) || $key === '') {
+                return null;
+            }
+
+            $values = array_values(array_filter(
+                $filter,
+                static fn (mixed $value): bool => $value !== null && $value !== '',
+            ));
+
+            return $values === [] ? null : new Filter($key, $values, FilterOperatorEnum::IN);
+        }
+
         $by = $filter['by'] ?? (is_string($key) ? $key : null);
         $value = $filter['value'] ?? null;
         $rawOperator = $filter['operator'] ?? null;

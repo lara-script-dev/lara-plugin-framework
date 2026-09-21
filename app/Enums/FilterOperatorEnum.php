@@ -7,4 +7,5 @@ namespace LaraPluginFramework\Enums;
 enum FilterOperatorEnum: string
 {
     case EQ = 'eq';
+    case IN = 'in';
 }
