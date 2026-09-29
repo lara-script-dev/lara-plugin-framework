@@ -680,6 +680,20 @@ The platform dispatches events for major domain actions. Plugins can listen to t
 | User Verification | `UserVerificationUpdatedEventInterface` | KYC status changed |
 | Requisite Verification | `RequisiteVerificationUpdatedEventInterface` | Wallet verification changed |
 
+#### User Security Events
+
+| Event | Interface | Description |
+|-------|-----------|-------------|
+| Password Changed | `UserPasswordChangedEventInterface` | Password changed successfully; exposes user ID and change time only |
+| 2FA Changed | `User2FaChangedEventInterface` | Confirmed EMAIL/TOTP enable or disable; exposes user ID, change time, method, and action only |
+
+These events are published after the host transaction commits. For financial
+authorization, read the durable timestamp through
+`UserSecurityStateProviderInterface::lastChangedAt()` immediately before the
+operation. `null` means no tracked change; an unavailable user or state must
+raise an error, not return `null`. `verifiedEmail()` returns only an address
+whose verification timestamp is present.
+
 #### Financial Events
 
 | Event | Interface | Description |
