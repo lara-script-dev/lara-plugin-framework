@@ -23,6 +23,8 @@ interface CheckStatusInterface
 
     /**
      * Execute status check for provided orders.
+     * The orders are read without a lock: call the merchant first, then write each order through
+     * OrderProcessingLockInterface so it does not race the webhooks.
      *
      * @param iterable<Order> $orders Traversable collection of orders
      */

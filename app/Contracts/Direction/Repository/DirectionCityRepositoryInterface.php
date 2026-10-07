@@ -20,4 +20,9 @@ interface DirectionCityRepositoryInterface
      * @return iterable<DirectionCity>
      */
     public function getByDirectionIds(array $directionIds, bool $onlyEnabledCities = true): iterable;
+
+    /**
+     * Decimal places the city fixed rate keeps once stored and exported; the rest is truncated.
+     */
+    public function getFixedRatePrecision(int $directionId, int $cityId): int;
 }
