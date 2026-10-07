@@ -26,4 +26,9 @@ interface DirectionRepositoryInterface
      * @return list<int>
      */
     public function getIdsByFilters(Filters $filters): array;
+
+    /**
+     * Decimal places the direction rate keeps once stored and exported; the rest is truncated.
+     */
+    public function getRatePrecision(int $directionId): int;
 }

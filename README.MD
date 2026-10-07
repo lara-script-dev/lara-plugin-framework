@@ -351,6 +351,7 @@ class SettingsGetter implements SettingsGetterInterface
 | `OrderRepositoryInterface` | Read orders by ID or hash |
 | `OrderServiceInterface` | Modify order status and amounts |
 | `OrderMetadataServiceInterface` | Read/write order metadata |
+| `OrderProcessingLockInterface` | Write an order under the per-order lock shared with core pollers and webhooks |
 | `AdminUserGetterInterface` | Get current admin user |
 | `FeatureFlagRepositoryInterface` | Check feature flags |
 | `CompositeRateProviderInterface` | Add rate providers |
