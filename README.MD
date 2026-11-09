@@ -42,6 +42,8 @@ This guide provides comprehensive documentation for developing plugins for the L
   - [Creation Rule Provider](#creation-rule-provider)
 - [Order Recalculation Hook](#order-recalculation-hook)
 - [Direction Rate Override Hook](#direction-rate-override-hook)
+- [Core Features](#core-features)
+- [Tiered Rates](#tiered-rates)
 - [Order Metadata](#order-metadata)
 - [Response Enrichers](#response-enrichers)
   - [Order Response Enricher](#order-response-enricher)
@@ -1787,6 +1789,46 @@ public function boot(Dispatcher $events): void
   filtering its own.
 - `directions.rate` of managed directions is **not** updated by core. The
   plugin must compute and persist the final rate itself.
+
+---
+
+## Core Features
+
+Some core features stay off until an active plugin switches them on. Implement
+`CoreFeatureProviderInterface`, return the features from `CoreFeatureEnum`, and
+tag the class under `CoreFeatureTag::PROVIDERS`. Only active plugins are
+registered, so deactivating the plugin switches the feature off again.
+
+```php
+public function register(): void
+{
+    $this->app->bind(MyCoreFeatureProvider::class);
+    $this->app->tag(MyCoreFeatureProvider::class, CoreFeatureTag::PROVIDERS);
+}
+```
+
+| Feature | Off without a provider |
+|---|---|
+| `TIERED_RATES` | Directions behave as if they had no tiers: rate, limits, rates file, admin API. Stored tiers are kept. |
+
+---
+
+## Tiered Rates
+
+`DirectionTieredRateRepositoryInterface` reads and writes the tiers the core
+stores for directions, together with the direction-level settings: the side the
+bounds are expressed in (`TieredRateAmountSideEnum`), the `active` switch and
+`exportAsSteps`. Values come as `DirectionTieredRates` / `TieredRate` DTOs with
+amounts and rates as decimal strings.
+
+- Run `validate()` before `save()`: it applies the same rules as the direction
+  form and returns messages keyed by `"{index}.{field}"` (or `"tiers"` for the
+  whole set), ready to be prefixed with the plugin's own form path. Pass the side
+  the tiers will be saved with: with `RECEIVE` a rate jump can leave the previous
+  tier with no give amounts, and that is reported too. Re-validate the stored
+  tiers when only the side or `exportAsSteps` changes.
+- `save()` takes `DirectionTieredRatesChange` per direction id; a null field is
+  left unchanged and `tiers` replaces the whole set.
 
 ---
 
