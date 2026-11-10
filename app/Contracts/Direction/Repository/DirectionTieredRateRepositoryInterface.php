@@ -43,7 +43,7 @@ interface DirectionTieredRateRepositoryInterface
      * @param list<TieredRate> $tiers
      * @return array<string, string> messages keyed by "{index}.{field}", or "tiers" for the set as a whole
      */
-    public function validate(array $tiers, bool $exportAsSteps, TieredRateAmountSideEnum $amountSide): array;
+    public function validate(array $tiers, TieredRateAmountSideEnum $amountSide): array;
 
     /**
      * Applies the changes in one transaction; tiers must have passed `validate()`. Changing `amountSide`
