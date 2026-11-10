@@ -1817,16 +1817,16 @@ public function register(): void
 
 `DirectionTieredRateRepositoryInterface` reads and writes the tiers the core
 stores for directions, together with the direction-level settings: the side the
-bounds are expressed in (`TieredRateAmountSideEnum`), the `active` switch and
-`exportAsSteps`. Values come as `DirectionTieredRates` / `TieredRate` DTOs with
-amounts and rates as decimal strings.
+bounds are expressed in (`TieredRateAmountSideEnum`) and the `active` switch.
+Values come as `DirectionTieredRates` / `TieredRate` DTOs with amounts and rates
+as decimal strings.
 
 - Run `validate()` before `save()`: it applies the same rules as the direction
   form and returns messages keyed by `"{index}.{field}"` (or `"tiers"` for the
   whole set), ready to be prefixed with the plugin's own form path. Pass the side
   the tiers will be saved with: with `RECEIVE` a rate jump can leave the previous
   tier with no give amounts, and that is reported too. Re-validate the stored
-  tiers when only the side or `exportAsSteps` changes.
+  tiers when only the side changes.
 - `save()` takes `DirectionTieredRatesChange` per direction id; a null field is
   left unchanged and `tiers` replaces the whole set.
 

@@ -19,7 +19,6 @@ final class DirectionTieredRatesChange
     public function __construct(
         public readonly ?TieredRateAmountSideEnum $amountSide = null,
         public readonly ?bool $active = null,
-        public readonly ?bool $exportAsSteps = null,
         public readonly ?array $tiers = null,
     ) {
     }

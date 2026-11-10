@@ -14,7 +14,6 @@ use LaraPluginFramework\Enums\TieredRateAmountSideEnum;
 final class DirectionTieredRates
 {
     /**
-     * @param bool $exportAsSteps export every tier as a `<step>` block in the rates file
      * @param list<TieredRate> $tiers
      */
     public function __construct(
@@ -22,7 +21,6 @@ final class DirectionTieredRates
         public readonly string $directionLabel,
         public readonly TieredRateAmountSideEnum $amountSide,
         public readonly bool $active,
-        public readonly bool $exportAsSteps,
         public readonly array $tiers,
     ) {
     }
